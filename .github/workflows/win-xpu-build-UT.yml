@@ -13,6 +13,11 @@ on:
             default: "windows.4xlarge.nonephemeral"
             description: |
               Label of the runner this job should run on.
+        build-environment:
+            required: false
+            type: string
+            default: "xpu"
+            description: Top-level label for what's being built/tested.
         s3-bucket:
             description: S3 bucket to download artifact
             required: false
@@ -136,7 +141,6 @@ jobs:
 
     - name: Store PyTorch Build Artifacts on S3
       uses: seemethere/upload-artifact-s3@v5
-      if: inputs.build-generates-artifacts && steps.build.outcome != 'skipped' && !inputs.use_split_build
       with:
         name: ${{ inputs.build-environment }}
         retention-days: 14
