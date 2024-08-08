@@ -19,6 +19,10 @@ on:
             default: false
             description: |
               Install oneAPI bundle(Y) or not(N).
+        INTEL_ONEAPI_PYTORCH_BUNDLE_URL:
+            required: false
+            type: string
+            default: ""
         build-environment:
             required: false
             type: string
