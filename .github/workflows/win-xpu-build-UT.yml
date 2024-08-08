@@ -13,16 +13,6 @@ on:
             default: "windows.4xlarge.nonephemeral"
             description: |
               Label of the runner this job should run on.
-        install-bundle:
-            required: false
-            type: boolean
-            default: false
-            description: |
-              Install oneAPI bundle(Y) or not(N).
-        INTEL_ONEAPI_PYTORCH_BUNDLE_URL:
-            required: false
-            type: string
-            default: ""
         build-environment:
             required: false
             type: string
@@ -52,9 +42,14 @@ jobs:
 
       - name: Install oneAPI bundle
         shell: cmd
-        if: ${{ inputs.install-bundle }}
         run: |
-          call .ci\pytorch\win-test-helpers\installation-helpers\install_oneapi_bundle.bat
+          if exist "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" (
+            echo "oneAPI bundle already installed"
+          ) else (
+            echo "setvars.bat not found, installing oneAPI bundle"
+            call .ci\pytorch\win-test-helpers\installation-helpers\install_oneapi_bundle.bat
+            echo "oneAPI bundle installed"
+          )
     
       - name: Set conda environment
         shell: cmd
