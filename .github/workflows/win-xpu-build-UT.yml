@@ -7,12 +7,18 @@ on:
   workflow_dispatch:
 
       inputs:
-        win_runner:
+        win-runner:
             required: false
             type: string
             default: "windows.4xlarge.nonephemeral"
             description: |
               Label of the runner this job should run on.
+        install-bundle:
+            required: false
+            type: boolean
+            default: false
+            description: |
+              Install oneAPI bundle(Y) or not(N).
         build-environment:
             required: false
             type: string
@@ -25,8 +31,7 @@ on:
             default: "gha-artifacts" 
             
 env:
-    home_dir: 'torch_home'
-    conda_env: 'torch_venv'
+    conda_env: 'xpu_venv'
     conda_path: 'C:\Jenkins\Miniconda3'
     python_version: '3.10'
     USE_XPU: 1
@@ -34,27 +39,33 @@ env:
 
 jobs:
   Preparation:
-    runs-on: ["${{ inputs.win_runner }}"]
+    runs-on: ["${{ inputs.win-runner }}"]
     steps:
-    - name: Checkout PyTorch
-      uses: pytorch/pytorch/.github/actions/checkout-pytorch@main
-      with:
+      - name: Checkout PyTorch
+        uses: pytorch/pytorch/.github/actions/checkout-pytorch@main
+        with:
           no-sudo: true
 
-    - name: Set conda environment
-      shell: cmd
-      run: |
-        call %conda_path%\Scripts\activate.bat
-        call conda remove -n %conda_env% --all -y
-        call conda create -n %conda_env% python=%python_version% -y
-        call conda activate %conda_env%
-        call conda install cmake==3.26.4 ninja -y
-        call conda remove ucrt -y
-        call pip install pyyaml
-        call conda list
+      - name: Install oneAPI bundle
+        shell: cmd
+        if: ${{ inputs.install-bundle }}
+        run: |
+          call .ci\pytorch\win-test-helpers\installation-helpers\install_oneapi_bundle.bat
+    
+      - name: Set conda environment
+        shell: cmd
+        run: |
+          call %conda_path%\Scripts\activate.bat
+          call conda remove -n %conda_env% --all -y
+          call conda create -n %conda_env% python=%python_version% -y
+          call conda activate %conda_env%
+          call conda install cmake==3.26.4 ninja -y
+          call conda remove ucrt -y
+          call pip install pyyaml
+          call conda list
 
   Build-whls:
-    runs-on: ["${{ inputs.win_runner }}"]
+    runs-on: ["${{ inputs.win-runner }}"]
     needs: [Preparation]
     steps:
      - name: Build Torch
@@ -62,11 +73,11 @@ jobs:
        run: |
          call %conda_path%\Scripts\activate.bat %conda_env%
          call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
-         if exist "%home_dir%\pytorch" (
-           rmdir /s /q "%home_dir%\pytorch"
+         if exist "pytorch" (
+           rmdir /s /q "pytorch"
          )
-         git clone https://github.com/pytorch/pytorch.git %home_dir%\pytorch > git_pytorch_repo_log.txt
-         cd %home_dir%\pytorch
+         git clone https://github.com/pytorch/pytorch.git pytorch > git_pytorch_repo_log.txt
+         cd pytorch
          call conda install conda-forge::rust -y
          call conda install typing_extensions -y
          python -m pip install -r requirements.txt > pip_install_pytorch_requirements_log.txt
@@ -78,12 +89,11 @@ jobs:
         call %conda_path%\Scripts\activate.bat %conda_env%
         call "C:\Program Files (x86)\Intel\oneAPI\setvars.bat"
         set DISTUTILS_USE_SDK=1
-        if exist "%home_dir%\vision" ( 
-          rmdir /s /q "%home_dir%\vision"
+        if exist "vision" ( 
+          rmdir /s /q "vision"
         )
-        git clone https://github.com/pytorch/vision.git %home_dir%\vision > git_vision_repo_log.txt
-        cd %home_dir%\vision
-        for %%f in (%home_dir%\pytorch\dist\torch-*.whl) do (
+        git clone https://github.com/pytorch/vision.git vision > git_vision_repo_log.txt
+        for %%f in (pytorch\dist\torch-*.whl) do (
           set "TORCH_WHL=%%f"
           echo "INFO - torch whl found"
         )
@@ -94,50 +104,40 @@ jobs:
           echo "INFO - No torch whl found."
           exit /b 1
         )
+        cd vision
         pip install -r docs\requirements.txt > pip_install_vision_requirements_log.txt
         echo "INFO - Building torchvision wheel"
         python setup.py bdist_wheel > build_vision_wheel_log.txt
         echo "INFO - torchvision wheel built"
-        for %%f in (%home_dir%\vision\dist\torchvision-*.whl) do (
-          set "TORCH_WHL=%%f"
-          echo "INFO - torchvision whl found"
-        )
-        if defined TORCH_WHL (
-          pip install %TORCH_WHL% --force-reinstall --no-deps
-          echo "INFO - torchvision whl installed"
-        ) else (
-          echo "No torchvision whl found."
-          exit /b 1
-        )
         conda list
 
   Upload-artifacts:
-    runs-on: ["${{ inputs.win_runner }}"]
+    runs-on: ["${{ inputs.win-runner }}"]
     needs: [Preparation,Build-whls]
     steps:
     - name: Upload pytorch wheel
       uses: actions/upload-artifact@v2
       with:
         name: pytorch wheel
-        path: '%home_dir%\pytorch\dist'
+        path: 'pytorch\dist'
 
     - name: Upload torchvision wheel
       uses: actions/upload-artifact@v2
       with:
         name: torchvision wheel
-        path: '%home_dir%\vision\dist'
+        path: 'vision\dist'
 
     - name: Upload logs
       uses: actions/upload-artifact@v2
       with:
         name: logs
         path: |
-          %home_dir%\pytorch\git_pytorch_repo_log.txt
-          %home_dir%\pytorch\pip_install_pytorch_requirements_log.txt
-          %home_dir%\pytorch\build_torch_wheel_log.txt
-          %home_dir%\vision\git_vision_repo_log.txt
-          %home_dir%\vision\pip_install_vision_requirements_log.txt
-          %home_dir%\vision\build_vision_wheel_log.txt
+          pytorch\git_pytorch_repo_log.txt
+          pytorch\pip_install_pytorch_requirements_log.txt
+          pytorch\build_torch_wheel_log.txt
+          vision\git_vision_repo_log.txt
+          vision\pip_install_vision_requirements_log.txt
+          vision\build_vision_wheel_log.txt
 
     - name: Store PyTorch Build Artifacts on S3
       uses: seemethere/upload-artifact-s3@v5
@@ -145,7 +145,9 @@ jobs:
         name: ${{ inputs.build-environment }}
         retention-days: 14
         if-no-files-found: error
-        path: artifacts.zip
+        path: |
+          pytorch\dist\torch-*.whl
+          vision\dist\torchvision-*.whl
         s3-bucket: ${{ inputs.s3-bucket }}
           
     - name: Teardown Windows
