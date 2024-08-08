@@ -1,5 +1,5 @@
 set ONEAPI_PARENT_DIR=C:\Program Files (x86)\Intel
-set INTEL_ONEAPI_PYTORCH_BUNDLE_URL=%INTEL_ONEAPI_PYTORCH_BUNDLE_URL%
+set INTEL_ONEAPI_PYTORCH_BUNDLE_URL=https://registrationcenter-download.intel.com/akdlm/IRC_NAS/5ca2021d-dd1a-4ab1-bd52-758fe63cf827/w_intel-for-pytorch-gpu-dev_p_0.5.2.19_offline.exe
 set INTEL_ONEAPI_PYTORCH_BUNDLE_DISPLAY_NAME=intel.oneapi.win.intel-for-pytorch-gpu-dev.product
 set INSTALL_FRESH_ONEAPI=1
 
