@@ -108,7 +108,6 @@ jobs:
         echo "INFO - Building torchvision wheel"
         python setup.py bdist_wheel > build_vision_wheel_log.txt
         echo "INFO - torchvision wheel built"
-        conda list
 
   Upload-artifacts:
     runs-on: ["${{ inputs.win-runner }}"]
