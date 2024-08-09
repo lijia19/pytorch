@@ -29,7 +29,7 @@ env:
     conda_path: 'C:\Jenkins\Miniconda3'
     python_version: '3.10'
     USE_XPU: 1
-    VS2022INSTALLDIR: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\BuildTools'
+    VS2022INSTALLDIR: 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools'
 
 jobs:
   Preparation:
