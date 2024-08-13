@@ -1231,6 +1231,15 @@ def check_config(cfg, *, xnumel=None, ynumel=None, znumel=None):
         )
 
 
+def _num_warps(num_warps, default_num_warps = 8, min_num_warps = 2):
+    # On AMD GPU each warp has 64 lanes which is double the size on NV GPU,
+    # therefore using half the number of warps here correspondingly.
+    if torch.version.hip:
+        default_num_warps = (default_num_warps + 1) // 2
+        min_num_warps = (min_num_warps + 1) // 2
+    return next_power_of_2(min(max(num_warps, min_num_warps), default_num_warps))
+
+
 def _check_max_grid_x(size_hints, x, num_warps):
     # Check if maxGridSize is exceeded - if so then must scale XBLOCK further
     max_grid_x = 2147483647
@@ -1312,9 +1321,7 @@ def triton_config(
     ):
         z *= 2
 
-    num_warps = next_power_of_2(
-        min(max(conditional_product(x, y, z) // num_elements_per_warp, 1), 8)
-    )
+    num_warps = _num_warps(conditional_product(x, y, z) // num_elements_per_warp, min_num_warps=1)
     # we are going to arrive at 2 warps only if bs was too small due to
     # numel being too small. However to workaround some ptx bugs we still
     # want at least 4 warps if there's enough elements per thread
@@ -1368,11 +1375,7 @@ def triton_config_reduction(size_hints, x, r, num_stages=1, num_warps=None) -> C
 
     if num_warps is None:
         num_warps = conditional_product(x, r) // 128
-    # On AMD GPU each warp has 64 lanes which is double the size on NV GPU,
-    # therefore using half the number of warps here correspondingly.
-    default_num_warps = 4 if torch.version.hip else 8
-    min_num_warps = 1 if torch.version.hip else 2
-    num_warps = next_power_of_2(min(max(num_warps, min_num_warps), default_num_warps))
+    num_warps = _num_warps(num_warps)
 
     x, _num_blocks = _check_max_grid_x(size_hints, x, num_warps)
 
@@ -1413,7 +1416,7 @@ def triton_config_tiled_reduction(size_hints, x, y, r, num_stages=1):
         y *= 2
 
     cfg = {"XBLOCK": x, "YBLOCK": y, "RBLOCK": r}
-    num_warps = next_power_of_2(min(max(conditional_product(x, y, r) // 256, 1), 8))
+    num_warps = _num_warps(conditional_product(x, y, r) // 256, min_num_warps=1)
     check_config(cfg, xnumel=size_hints[0], ynumel=size_hints[1])
     assert r <= TRITON_MAX_BLOCK["R"], f"increase TRITON_MAX_BLOCK['r'] to {r}"
     return Config(cfg, num_warps=num_warps, num_stages=num_stages)
