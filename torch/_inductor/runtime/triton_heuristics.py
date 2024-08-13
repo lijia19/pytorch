@@ -1231,6 +1231,22 @@ def check_config(cfg, *, xnumel=None, ynumel=None, znumel=None):
         )
 
 
+def _check_max_grid_x(size_hints, x, num_warps):
+    # Check if maxGridSize is exceeded - if so then must scale XBLOCK further
+    max_grid_x = 2147483647
+    warp_size = (
+        64 if torch.version.hip else 32
+    )  # TODO: query warp size once #129663 is merged
+    num_blocks = (size_hints[0] + x - 1) // x
+
+    while (num_blocks * num_warps * warp_size) > max_grid_x and x < size_hints[0]:
+        x *= 2  # Scale up XBLOCK if grid exceeds limits
+        num_blocks = num_blocks // 2
+        if x >= max_grid_x:
+            raise AssertionError("Reduction config exceeds cudaDeviceProp maxGridSize. Please raise a pytorch issue")
+    return x, num_blocks
+
+
 def triton_config(
     size_hints,
     x,
@@ -1317,11 +1333,14 @@ def triton_config(
     )
     x *= math.ceil(block_size / conditional_product(x, y, z))
 
+    x, _num_blocks = _check_max_grid_x(size_hints, x, num_warps)
+
     cfg = {"XBLOCK": x}
     if y:
         cfg["YBLOCK"] = y
     if z:
         cfg["ZBLOCK"] = z
+    assert x <= TRITON_MAX_BLOCK["X"], f"increase TRITON_MAX_BLOCK['X'] to {x}"
     check_config(cfg, xnumel=xnumel, ynumel=ynumel, znumel=znumel)
     return Config(cfg, num_warps=num_warps, num_stages=num_stages)
 
@@ -1355,16 +1374,8 @@ def triton_config_reduction(size_hints, x, r, num_stages=1, num_warps=None) -> C
     min_num_warps = 1 if torch.version.hip else 2
     num_warps = next_power_of_2(min(max(num_warps, min_num_warps), default_num_warps))
 
-    # Check if maxGridSize is exceeded - if so then must scale XBLOCK further
-    max_grid_x = 2147483647
-    warp_size = (
-        64 if torch.version.hip else 32
-    )  # TODO: query warp size once #129663 is merged
-    num_blocks = (size_hints[0] + x - 1) // x
+    x, _num_blocks = _check_max_grid_x(size_hints, x, num_warps)
 
-    while (num_blocks * num_warps * warp_size) > max_grid_x and x < size_hints[0]:
-        x *= 2  # Scale up XBLOCK if grid exceeds limits
-        num_blocks = num_blocks // 2
     while conditional_product(x, r) > target:
         if r == 1:
             break
@@ -1374,9 +1385,6 @@ def triton_config_reduction(size_hints, x, r, num_stages=1, num_warps=None) -> C
     check_config(cfg, xnumel=size_hints[0])
     assert x <= TRITON_MAX_BLOCK["X"], f"increase TRITON_MAX_BLOCK['X'] to {x}"
     assert r <= TRITON_MAX_BLOCK["R"], f"increase TRITON_MAX_BLOCK['r'] to {r}"
-    assert (
-        num_blocks * num_warps * warp_size
-    ) <= max_grid_x, "Reduction config exceeds cudaDeviceProp maxGridSize. Please raise a pytorch issue"
     return Config(cfg, num_warps=num_warps, num_stages=num_stages)
 
 
