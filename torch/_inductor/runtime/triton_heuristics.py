@@ -1328,7 +1328,8 @@ def triton_config(
     # given that this is a rare situation, don't expect this to affect perf
     # in general
     # see https://github.com/pytorch/pytorch/pull/97950
-    num_warps = max(num_warps, 4) if conditional_product(x, y, z) >= 128 else num_warps
+    if conditional_product(x, y, z) >= 128 and not torch.version.hip:
+        num_warps = max(num_warps, 4)
     xnumel = size_hints[0]
     ynumel = size_hints[1] if y else None
     znumel = size_hints[2] if z else None
