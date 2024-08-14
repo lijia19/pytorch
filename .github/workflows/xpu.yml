@@ -37,3 +37,10 @@ jobs:
       build-environment: linux-jammy-xpu-py3.8
       docker-image: ${{ needs.linux-jammy-xpu-py3_8-build.outputs.docker-image }}
       test-matrix: ${{ needs.linux-jammy-xpu-py3_8-build.outputs.test-matrix }}
+
+  windows-xpu-build:
+    name: windows-xpu-py3.10
+    uses: ./.github/workflows/windows-build-xpu.yml
+    with:
+      build-environment: xpu
+      win_runner: windows.4xlarge.nonephemeral
