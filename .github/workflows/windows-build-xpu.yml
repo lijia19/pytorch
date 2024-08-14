@@ -91,12 +91,6 @@ jobs:
         name: pytorch wheel
         path: 'pytorch\dist'
 
-    - name: Upload torchvision wheel
-      uses: actions/upload-artifact@v2
-      with:
-        name: torchvision wheel
-        path: 'vision\dist'
-
     - name: Upload logs
       uses: actions/upload-artifact@v2
       with:
@@ -105,9 +99,6 @@ jobs:
           pytorch\git_pytorch_repo_log.txt
           pytorch\pip_install_pytorch_requirements_log.txt
           pytorch\build_torch_wheel_log.txt
-          vision\git_vision_repo_log.txt
-          vision\pip_install_vision_requirements_log.txt
-          vision\build_vision_wheel_log.txt
 
     - name: Store PyTorch Build Artifacts on S3
       uses: seemethere/upload-artifact-s3@v5
