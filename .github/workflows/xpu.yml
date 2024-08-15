@@ -40,7 +40,7 @@ jobs:
 
   windows-xpu-build:
     name: windows-xpu-py3.10
-    uses: ./.github/workflows/windows-build-xpu.yml
+    uses: ./.github/workflows/_win-build.yml
     with:
-      build-environment: xpu
-      win_runner: windows.4xlarge.nonephemeral
+      build-environment: xpu-py3.10
+      cuda-version: xpu
