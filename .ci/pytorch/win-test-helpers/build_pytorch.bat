@@ -76,6 +76,14 @@ set PATH=%CUDA_PATH%\bin;%CUDA_PATH%\libnvvp;%PATH%
 
 :cuda_build_end
 
+if not "%USE_XPU%"=="1" goto xpu_build_end
+
+set PYTHON_VERSION='3.10'
+set VS2022INSTALLDIR='C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools'
+set CONDA_ENV='xpu_venv'
+
+:xpu_build_end
+
 set DISTUTILS_USE_SDK=1
 set PATH=%TMP_DIR_WIN%\bin;%PATH%
 
@@ -108,6 +116,25 @@ if "%USE_CUDA%"=="1" (
   set CUDA_NVCC_EXECUTABLE=%TMP_DIR%/bin/nvcc.bat
   for /F "usebackq delims=" %%n in (`cygpath -m "%CUDA_PATH%\bin\nvcc.exe"`) do set CMAKE_CUDA_COMPILER=%%n
   set CMAKE_CUDA_COMPILER_LAUNCHER=%TMP_DIR%/bin/randomtemp.exe;%TMP_DIR%\bin\sccache.exe
+)
+
+if "%USE_XPU%"=="1" (
+  :: Install oneAPI bundle
+  if exist "C:\Program Files (x86)\Intel\oneAPI\setvars.bat" (
+      echo "oneAPI bundle already installed"
+  ) else (
+      echo "setvars.bat not found, installing oneAPI bundle"
+      call .ci\pytorch\win-test-helpers\installation-helpers\install_oneapi_bundle.bat
+      echo "oneAPI bundle installed"
+  )
+
+  :: Set up conda environment
+  call %CONDA_PARENT_DIR%\Miniconda3\Scripts\activate.bat
+  call conda remove -n %CONDA_ENV% --all -y
+  call conda create -n %CONDA_ENV% python=%PYTHON_VERSION% -y
+  call conda activate %CONDA_ENV%
+  call conda install cmake==3.26.4 ninja -y
+  call pip install pyyaml
 )
 
 :: Print all existing environment variable for debugging
