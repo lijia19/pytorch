@@ -53,6 +53,7 @@ from ..source import (
     ConvertIntSource,
     FloatTensorSource,
     GetItemSource,
+    GlobalWeakRefSource,
     GradSource,
     is_cell_contents,
     is_constant_source,
@@ -183,7 +184,11 @@ from .tensor import (
     UnspecializedPythonVariable,
 )
 from .torch import TorchCtxManagerClassVariable, TorchInGraphFunctionVariable
-from .torch_function import build_torch_function_fn, TensorWithTFOverrideVariable
+from .torch_function import (
+    build_torch_function_fn,
+    TensorWithTFOverrideVariable,
+    TorchFunctionModeVariable,
+)
 from .user_defined import (
     KeyedJaggedTensorVariable,
     MutableMappingVariable,
@@ -608,6 +613,16 @@ class VariableBuilder:
             return self.wrap_module(value)
         elif ConstantVariable.is_literal(value):  # non-atomic literals
             return self.wrap_literal(value)
+        elif isinstance(value, torch.overrides.TorchFunctionMode):
+            # This value was on the TF mode stack
+            # stash a weak ref for simpler access
+            if isinstance(self.source, GlobalWeakRefSource):
+                install_guard(self.source.make_guard(GuardBuilder.WEAKREF_ALIVE))
+                val_ref = weakref.ref(value)
+                self.tx.output.install_global_unsafe(self.source.global_name, val_ref)
+            var = TorchFunctionModeVariable(value, source=self.source)
+            self.tx.output.side_effects.track_object_existing(value, var)
+            return var
         elif istype(value, frozenset) and (
             ConstantVariable.is_literal(x) for x in value
         ):
