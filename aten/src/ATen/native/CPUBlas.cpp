@@ -822,4 +822,182 @@ void copy(int64_t n, const c10::complex<float> *x, int64_t incx, c10::complex<fl
       n, x, incx, y, incy);
 }
 
-}  // namespace at::native::cpublas
+void brgemm(
+    int64_t M,
+    int64_t N,
+    int64_t K,
+    int64_t bs,
+    int64_t ld_a,
+    int64_t ld_b,
+    int64_t ld_c,
+    const float alpha,
+    const float beta,
+    const at::Half* A,
+    const at::Half* B,
+    const std::vector<std::pair<int64_t, int64_t>>& offsets,
+    float* C) {
+#if AT_MKLDNN_ENABLED() && (defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+  if (Brgemm::device_check(ScalarType::Half)) {
+    Brgemm::call<at::Half, at::Half, float>(
+      M, N, K, bs, ld_a, ld_b, ld_c, alpha, beta, A, B, offsets, C);
+    return;
+  }
+#endif
+  for (int64_t i = 0; i < bs; i++) {
+    gemm(
+        TransposeType::NoTranspose,
+        TransposeType::NoTranspose,
+        N,
+        M,
+        K,
+        alpha,
+        B + offsets[i].second / sizeof(at::Half),
+        ld_b,
+        A + offsets[i].first / sizeof(at::Half),
+        ld_a,
+        i == 0 ? beta : 1.f,
+        C,
+        ld_c);
+  }
+}
+
+void brgemm(
+    int64_t M,
+    int64_t N,
+    int64_t K,
+    int64_t bs,
+    int64_t ld_a,
+    int64_t ld_b,
+    int64_t ld_c,
+    const float alpha,
+    const float beta,
+    const at::BFloat16* A,
+    const at::BFloat16* B,
+    const std::vector<std::pair<int64_t, int64_t>>& offsets,
+    float* C) {
+#if AT_MKLDNN_ENABLED() && (defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+  if (Brgemm::device_check(ScalarType::BFloat16)) {
+    Brgemm::call<at::BFloat16, at::BFloat16, float>(
+      M, N, K, bs, ld_a, ld_b, ld_c, alpha, beta, A, B, offsets, C);
+    return;
+  }
+#endif
+  for (int64_t i = 0; i < bs; i++) {
+    gemm(
+        TransposeType::NoTranspose,
+        TransposeType::NoTranspose,
+        N,
+        M,
+        K,
+        alpha,
+        B + offsets[i].second / sizeof(at::BFloat16),
+        ld_b,
+        A + offsets[i].first / sizeof(at::BFloat16),
+        ld_a,
+        i == 0 ? beta : 1.f,
+        C,
+        ld_c);
+  }
+}
+
+void brgemm(
+    int64_t M,
+    int64_t N,
+    int64_t K,
+    int64_t ld_a,
+    int64_t ld_b,
+    int64_t ld_c,
+    const float alpha,
+    const float beta,
+    const at::Half* A,
+    const at::Half* B,
+    float* C) {
+#if AT_MKLDNN_ENABLED() && (defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+  if (Brgemm::device_check(ScalarType::Half)) {
+    Brgemm::call<at::Half, at::Half, float>(
+      M, N, K, ld_a, ld_b, ld_c, alpha, beta, A, B, C);
+    return;
+  }
+#endif
+  gemm(
+      TransposeType::NoTranspose,
+      TransposeType::NoTranspose,
+      N,
+      M,
+      K,
+      alpha,
+      B,
+      ld_b,
+      A,
+      ld_a,
+      beta,
+      C,
+      ld_c);
+}
+
+void brgemm(
+    int64_t M,
+    int64_t N,
+    int64_t K,
+    int64_t ld_a,
+    int64_t ld_b,
+    int64_t ld_c,
+    const float alpha,
+    const float beta,
+    const at::BFloat16* A,
+    const at::BFloat16* B,
+    float* C) {
+#if AT_MKLDNN_ENABLED() && (defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+  if (Brgemm::device_check(ScalarType::BFloat16)) {
+    Brgemm::call<at::BFloat16, at::BFloat16, float>(
+      M, N, K, ld_a, ld_b, ld_c, alpha, beta, A, B, C);
+    return;
+  }
+#endif
+  gemm(
+      TransposeType::NoTranspose,
+      TransposeType::NoTranspose,
+      N,
+      M,
+      K,
+      alpha,
+      B,
+      ld_b,
+      A,
+      ld_a,
+      beta,
+      C,
+      ld_c);
+}
+
+void brgemm_release() {
+#if AT_MKLDNN_ENABLED() && (defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+  dnnl::ukernel::brgemm::release_hw_context();
+#endif
+}
+
+void pack(
+    int64_t K,
+    int64_t N,
+    int64_t ld_in,
+    int64_t ld_out,
+    ScalarType dt_in,
+    ScalarType dt_out,
+    const void* in,
+    void* out) {
+#if AT_MKLDNN_ENABLED() && (defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+  Pack::call(K, N, ld_in, ld_out, dt_in, dt_out, in, out);
+#else
+  TORCH_CHECK(false, "pack is only supported on X64 with oneDNN enabled");
+#endif
+}
+
+bool need_pack(ScalarType dt_in) {
+#if AT_MKLDNN_ENABLED() && (defined(__x86_64__) || (defined(_M_X64) && !defined(_M_ARM64EC)))
+  return Pack::need_pack(dt_in);
+#else
+  return false;
+#endif
+}
+
+} // namespace at::native::cpublas
