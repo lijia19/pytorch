@@ -1,5 +1,6 @@
 # mypy: allow-untyped-defs
 import inspect
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, Optional, Tuple, Type, Union
 
 import torch
@@ -280,6 +281,37 @@ class XpuInterface(DeviceInterface):
         return cc
 
 
+@dataclass
+class CpuDeviceProperties:
+    multi_processor_count: int
+
+
+class CpuInterface(DeviceInterface):
+    @staticmethod
+    def is_available() -> bool:
+        return True
+
+    @staticmethod
+    def get_compute_capability(device: _device_t = None) -> str:
+        return ""
+
+    @staticmethod
+    def current_device():
+        return 0
+
+    @staticmethod
+    def synchronize(device: _device_t = None):
+        pass
+
+    class Worker:
+        @staticmethod
+        def get_device_properties(device: _device_t = None):
+            import multiprocessing
+
+            cpu_count = multiprocessing.cpu_count()
+            return CpuDeviceProperties(cpu_count)
+
+
 device_interfaces: Dict[str, Type[DeviceInterface]] = {}
 _device_initialized = False
 
@@ -317,5 +349,7 @@ def init_device_reg():
     register_interface_for_device("xpu", XpuInterface)
     for i in range(torch.xpu.device_count()):
         register_interface_for_device(f"xpu:{i}", XpuInterface)
+
+    register_interface_for_device("cpu", CpuInterface)
 
     _device_initialized = True
