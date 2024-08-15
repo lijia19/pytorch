@@ -177,12 +177,14 @@ class SubclassCreationMeta:
     # both of its inner elements are TwoTensors, then the
     # arg_count of the outer-most sublass will be 4
     arg_count: int
+    # Mark where or not symints were included
+    included_subclass_symints: bool
     # meta and attrs are produced by the subclass's __tensor_flatten__.
     # We need to keep them around along with outer_size / outer_stride to plumb them
     # into __tensor_unflatten__
     attrs: Dict[str, Union["SubclassCreationMeta", None]]
-    outer_size: List[int]
-    outer_stride: List[int]
+    outer_size: List[Union[int, torch.SymInt]]
+    outer_stride: List[Union[int, torch.SymInt]]
     meta: Any
     # Stores the original subclass itself.
     # This is needed because we need the autograd metadata on the original subclass
@@ -194,7 +196,53 @@ class SubclassCreationMeta:
     # Used at runtime to determine the subclass type, so we don't need to save the original subclass
     original_subclass_type: Optional[type] = None
 
-    def creation_fn(self, all_args, *, is_runtime: bool):
+    def compute_outer_size_and_stride(
+        self,
+        all_args,
+        *,
+        curr_start_idx: int,
+        is_runtime: bool,
+        is_nested: bool,
+    ):
+        from .subclass_utils import compute_symint_placeholders
+
+        outer_size_symint_placeholders = compute_symint_placeholders(self.outer_size)
+        outer_stride_symint_placeholders = compute_symint_placeholders(
+            self.outer_stride
+        )
+        has_symbolic = any(outer_size_symint_placeholders)
+
+        if is_runtime and has_symbolic and not is_nested:
+            start = curr_start_idx
+            end = start + sum(outer_size_symint_placeholders)
+            it_args = iter(all_args[start:end])
+            it_placeholders = iter(outer_size_symint_placeholders)
+            outer_size = pytree.tree_map_only(
+                lambda _: next(it_placeholders),
+                lambda _: next(it_args),
+                self.outer_size,
+            )
+
+            start = end
+            end = start + sum(outer_stride_symint_placeholders)
+            it_args = iter(all_args[start:end])
+            it_placeholders = iter(outer_stride_symint_placeholders)
+            outer_stride = pytree.tree_map_only(
+                lambda _: next(it_placeholders),
+                lambda _: next(it_args),
+                self.outer_size,
+            )
+            return outer_size, outer_stride
+
+        return self.outer_size, self.outer_stride
+
+    def creation_fn(
+        self,
+        all_args,
+        *,
+        is_runtime: bool,
+        is_nested: bool,
+    ):
         inner_tensors = {}
 
         curr_start_idx = self.flat_tensor_start_idx
@@ -203,7 +251,11 @@ class SubclassCreationMeta:
                 subclass = all_args[curr_start_idx]
                 curr_start_idx += 1
             else:
-                subclass = creation_meta.creation_fn(all_args, is_runtime=is_runtime)
+                subclass = creation_meta.creation_fn(
+                    all_args,
+                    is_runtime=is_runtime,
+                    is_nested=True,
+                )
                 curr_start_idx += creation_meta.arg_count
             inner_tensors[attr] = subclass
 
@@ -213,8 +265,15 @@ class SubclassCreationMeta:
         else:
             original_subclass_type = type(self.original_subclass)
 
+        outer_size, outer_stride = self.compute_outer_size_and_stride(
+            all_args,
+            curr_start_idx=curr_start_idx,
+            is_runtime=is_runtime,
+            is_nested=is_nested,
+        )
+
         rebuilt = original_subclass_type.__tensor_unflatten__(  # type: ignore[attr-defined]
-            inner_tensors, self.meta, self.outer_size, self.outer_stride
+            inner_tensors, self.meta, outer_size, outer_stride
         )
 
         if not is_runtime:

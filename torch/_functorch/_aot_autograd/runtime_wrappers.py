@@ -639,8 +639,12 @@ class AOTDispatchSubclassWrapper(CompilerWrapper):
 
         @wraps(compiled_fn)
         def inner_fn(args: List[Any]):
+            assert self.trace_joint is False
             unwrapped_args = unwrap_tensor_subclasses(
-                args, is_joint_structure=self.trace_joint
+                args,
+                subclass_metas=runtime_metadata.subclass_inp_meta,
+                is_runtime=True,
+                append_symints=True,
             )
             args.clear()
             # expectation: runtime_fn is a boxed fn
@@ -650,6 +654,7 @@ class AOTDispatchSubclassWrapper(CompilerWrapper):
                 subclass_metas=subclass_metas,
                 num_fw_outs_saved_for_bw=self.num_fw_outs_saved_for_bw,
                 is_runtime=True,
+                included_subclass_symints=True,
             )
             return wrapped_outs
 
@@ -1820,7 +1825,10 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
                     len_tangents = len(
                         unwrap_tensor_subclasses(
                             tangents,
-                            is_joint_structure=False,
+                            is_runtime=False,
+                            # any extra symint will be captured by the partitioner
+                            append_symints=False,
+                            subclass_metas=None,
                         )
                     )
                     assert CompiledFunction.metadata.traced_tangent_metas is not None
@@ -1837,8 +1845,20 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
                         )
                         for i, t in enumerate(all_args)
                     ]
+
+                    metas = iter(CompiledFunction.metadata.subclass_tangent_meta)
+                    tangent_metadata = [
+                        next(metas)
+                        if isinstance(a, Tensor) and is_traceable_wrapper_subclass(a)
+                        else i
+                        for i, a in enumerate(all_args)
+                    ]
+
                     all_args = unwrap_tensor_subclasses(
-                        all_args, is_joint_structure=False
+                        all_args,
+                        is_runtime=False,
+                        append_symints=False,
+                        subclass_metas=None,
                     )
                     tangents_start_idx = len(all_args) - len_tangents - len(rng_args)
                     tangents_end_idx = tangents_start_idx + len_tangents
@@ -1991,6 +2011,7 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
                                 outs_wrapped = wrap_tensor_subclasses(
                                     outs,
                                     subclass_metas=CompiledFunction.maybe_subclass_metadata.grad_input_metas,
+                                    included_subclass_symints=False,
                                 )
                                 return outs_wrapped
                             return outs
@@ -2019,6 +2040,8 @@ To fix this, your tensor subclass must implement the dunder method __force_to_sa
                     outs_wrapped = wrap_tensor_subclasses(
                         out,
                         subclass_metas=CompiledFunction.maybe_subclass_metadata.grad_input_metas,
+                        included_subclass_symints=True,
+                        is_runtime=True,
                     )
                     return (*[None] * num_tokens, *outs_wrapped)
                 return (*[None] * num_tokens, *out)
@@ -2121,3 +2144,7 @@ def make_runtime_safe(
     fw_metadata.make_runtime_safe()
     if maybe_subclass_meta is not None:
         maybe_subclass_meta.fw_metadata.make_runtime_safe()
+        if maybe_subclass_meta.grad_input_metas:
+            for meta in maybe_subclass_meta.grad_input_metas:
+                if isinstance(meta, SubclassCreationMeta):
+                    meta.make_runtime_safe()
