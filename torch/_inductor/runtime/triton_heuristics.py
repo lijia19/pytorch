@@ -1385,7 +1385,9 @@ def triton_config_reduction(
 
     if num_warps is None:
         num_warps = conditional_product(x, r) // 128
-    num_warps = _num_warps(num_warps, max_num_warps=16, register_intensive=register_intensive)
+    num_warps = _num_warps(
+        num_warps, max_num_warps=16, register_intensive=register_intensive
+    )
 
     x, _num_blocks = _check_max_grid_x(size_hints, x, num_warps)
 
