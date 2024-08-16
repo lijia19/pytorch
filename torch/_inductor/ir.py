@@ -4684,6 +4684,11 @@ class ExternKernel(InputsKernel):
         if x.get_numel() == 0:  # Layout doesn't matter
             return x
 
+        try:
+            x.realize()
+        except NotImplementedError:
+            pass
+
         # require x to have the layout as strided_ordered as order
         if is_storage_and_layout(x):
             while isinstance(x.get_layout(), NonOwningLayout):
@@ -4740,6 +4745,8 @@ class ExternKernel(InputsKernel):
                 return cls.require_stride_order(x, order, allow_padding=allow_padding)
             except NotImplementedError:
                 pass
+        # Although this is a clone, inductor is good about fusing clones into previous
+        # operations if they weren't realized and their layouts were flexible.
         x = cls.copy_input(x)
         as_storage_and_layout(
             x,
