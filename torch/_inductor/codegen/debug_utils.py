@@ -65,10 +65,7 @@ class DebugPrinterManager:
     def get_debug_filtered_kernel_names(self) -> List[str]:
         return [
             x.strip()
-            for x in os.environ.get(
-                "AOT_INDUCTOR_FILTERED_KERNELS_TO_PRINT",
-                self.DEBUG_FILTER_DEFAULT_PRINT_ALL,
-            )
+            for x in config.aot_inductor.filtered_kernel_names
             .lower()
             .split(",")
         ]
