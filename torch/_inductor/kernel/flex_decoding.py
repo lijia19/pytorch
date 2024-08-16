@@ -303,8 +303,14 @@ def get_split_k(B: int, H: int, Mk: int, SM: int = 128) -> int:
 
 
 def _get_decoding_default_config(key) -> Tuple[int, int, int]:
-    default_config = (64, 2, 3)
-
+    dtype = key.get_dtype()
+    head_dim = key.get_size()[-1]
+    sm_version = torch.cuda.get_device_capability()
+    default_config = (32, 2, 3)
+    if sm_version >= (9, 0):
+        if head_dim > 128 and dtype == torch.float32:
+            return default_config
+        return (64, 2, 3)
     return default_config
 
 
