@@ -1231,7 +1231,7 @@ def check_config(cfg, *, xnumel=None, ynumel=None, znumel=None):
         )
 
 
-def _num_warps(num_warps, max_num_warps = 8, min_num_warps = 2, register_intensive=False):
+def _num_warps(num_warps, max_num_warps=8, min_num_warps=2, register_intensive=False):
     # On AMD GPU each warp has 64 lanes which is double the size on NV GPU,
     # therefore using half the number of warps here correspondingly.
     if torch.version.hip:
@@ -1255,7 +1255,9 @@ def _check_max_grid_x(size_hints, x, num_warps):
         x *= 2  # Scale up XBLOCK if grid exceeds limits
         num_blocks = num_blocks // 2
         if x >= max_grid_x:
-            raise AssertionError("Reduction config exceeds cudaDeviceProp maxGridSize. Please raise a pytorch issue")
+            raise AssertionError(
+                "Reduction config exceeds cudaDeviceProp maxGridSize. Please raise a pytorch issue"
+            )
     return x, num_blocks
 
 
@@ -1324,7 +1326,9 @@ def triton_config(
     ):
         z *= 2
 
-    num_warps = _num_warps(conditional_product(x, y, z) // num_elements_per_warp, min_num_warps=1)
+    num_warps = _num_warps(
+        conditional_product(x, y, z) // num_elements_per_warp, min_num_warps=1
+    )
     # we are going to arrive at 2 warps only if bs was too small due to
     # numel being too small. However to workaround some ptx bugs we still
     # want at least 4 warps if there's enough elements per thread
